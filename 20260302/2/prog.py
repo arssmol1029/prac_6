@@ -117,6 +117,62 @@ class DungeonGame:
             event.say()
 
 
+def parse_addmon(args: list[str]) -> dict[str, str | int]:
+    if len(args) < 1:
+        raise InvalidCommand
+
+    name = args[0]
+    i = 1
+
+    seen: set[str] = set()
+    hello: str
+    hp: int
+    x: int
+    y: int
+
+    def need(n: int) -> None:
+        if i + n >= len(args):
+            raise InvalidCommand
+
+    while i < len(args):
+        key = args[i]
+        if key not in {"hello", "hp", "coords"}:
+            raise InvalidCommand
+
+        if key in seen:
+            raise InvalidCommand
+        seen.add(key)
+
+        if key == "hello":
+            need(1)
+            hello = args[i + 1]
+            i += 2
+
+        elif key == "hp":
+            need(1)
+            try:
+                hp = int(args[i + 1])
+            except ValueError as e:
+                raise InvalidCommand
+            if hp <= 0:
+                raise InvalidCommand
+            i += 2
+
+        else:
+            need(2)
+            try:
+                x, y = int(args[i + 1]), int(args[i + 2])
+            except ValueError as e:
+                raise InvalidCommand
+            i += 3
+
+    missing = [p for p in ("hello", "hp", "coords") if p not in seen]
+    if missing:
+        raise InvalidCommand
+
+    return {"name": name, "hello": hello, "hp": hp, "x": x, "y": y}
+
+
 def main():
     game = DungeonGame()
     game.start()
@@ -138,18 +194,18 @@ def main():
                 print(f"Moved to ({x}, {y})")
                 game.encounter(x, y)
 
-            elif command == "addmon" and len(args) == 4:
-                name, x, y, message = args
+            elif command == "addmon":
+                params = parse_addmon(args)
+
+                name, hello, hp, x, y = [value for _, value in params.items()]
 
                 if name not in list_cows():
                     raise UnknownMonster
 
-                x, y = int(x), int(y)
+                is_replace = bool(game[x, y])  # type: ignore
 
-                is_replace = bool(game[x, y])
-
-                game.addmon((x, y), message=message, name=name)
-                print(f"Added monster to ({x}, {y}) saying {message}")
+                game.addmon((x, y), message=hello, name=name)  # type: ignore
+                print(f"Added monster to ({x}, {y}) saying {hello}")
 
                 if is_replace:
                     print("Replaced the old monster")
