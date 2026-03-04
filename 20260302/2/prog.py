@@ -1,4 +1,5 @@
 import sys
+import shlex
 
 from cowsay import cowsay, list_cows
 
@@ -121,7 +122,7 @@ def main():
     game.start()
 
     for line in sys.stdin:
-        command, *args = line.split()
+        command, *args = shlex.split(line)
         try:
             if command in ["right", "left", "up", "down"] and len(args) == 0:
                 if command == "right":
