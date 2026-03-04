@@ -1,9 +1,13 @@
 import sys
 
-from cowsay import cowsay
+from cowsay import cowsay, list_cows
 
 
 class InvalidCommand(RuntimeError):
+    pass
+
+
+class UnknownMonster(RuntimeError):
     pass
 
 
@@ -129,6 +133,10 @@ def main():
 
             elif command == "addmon" and len(args) == 4:
                 name, x, y, message = args
+
+                if name not in list_cows():
+                    raise UnknownMonster
+
                 x, y = int(x), int(y)
 
                 is_replace = bool(game[x, y])
@@ -140,6 +148,9 @@ def main():
                     print("Replaced the old monster")
             else:
                 raise InvalidCommand
+
+        except UnknownMonster:
+            print("Cannot add unknown monster")
 
         except Exception:
             print("Invalid command")
