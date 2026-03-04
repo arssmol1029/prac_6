@@ -5,6 +5,8 @@ from cowsay import cowsay, list_cows
 
 LIST_COWS = list_cows() + ["jgsbat"]
 
+VERSION = 0.1
+
 
 class InvalidCommand(RuntimeError):
     pass
@@ -51,6 +53,7 @@ class DungeonGame:
             self._dungeon.append(row)
 
     def start(self):
+        print(f"<<< Welcome to Python-MUD {VERSION} >>>")
         self._user_pos: tuple[int, int] = (0, 0)
 
     def move(self, *, x: int = 0, y: int = 0) -> tuple[int, int]:
