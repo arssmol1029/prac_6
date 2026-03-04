@@ -27,7 +27,7 @@ class Monster(Event):
 
     def say(self):
         if self._message:
-            print(cowsay(message=self._message))
+            print(cowsay(message=self._message, cow=self._name))
 
 
 class DungeonGame:
