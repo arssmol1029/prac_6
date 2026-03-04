@@ -1,6 +1,7 @@
 import sys
 import shlex
 
+from dataclasses import dataclass
 from cowsay import cowsay, list_cows
 
 
@@ -25,15 +26,20 @@ class Event:
         return not self._nothing
 
 
+@dataclass(frozen=True, slots=True)
+class MonsterParams:
+    name: str
+    hello: str
+    hp: int
+
+
 class Monster(Event):
-    def __init__(self, *, message: str, name: str):
+    def __init__(self, *, params: MonsterParams):
         super().__init__(nothing=False)
-        self._message = message
-        self._name = name
+        self._params = params
 
     def say(self):
-        if self._message:
-            print(cowsay(message=self._message, cow=self._name))
+        print(cowsay(message=self._params.hello, cow=self._params.name))
 
 
 class DungeonGame:
@@ -102,11 +108,13 @@ class DungeonGame:
         else:
             raise KeyError
 
-    def addmon(
-        self, pos: tuple[int, int], *, message: str, name: str = "default"
-    ) -> Event:
-        x, y = pos
-        self[x, y] = Monster(message=message, name=name)
+    def addmon(self, x: int, y: int, *, params: MonsterParams) -> Event:
+        if params.name not in list_cows():
+            raise UnknownMonster
+
+        self[x, y] = Monster(
+            params=MonsterParams(name=params.name, hello=params.hello, hp=params.hp)
+        )
 
         return self[x, y]
 
@@ -117,7 +125,7 @@ class DungeonGame:
             event.say()
 
 
-def parse_addmon(args: list[str]) -> dict[str, str | int]:
+def parse_addmon(args: list[str]) -> tuple[MonsterParams, int, int]:
     if len(args) < 1:
         raise InvalidCommand
 
@@ -170,7 +178,7 @@ def parse_addmon(args: list[str]) -> dict[str, str | int]:
     if missing:
         raise InvalidCommand
 
-    return {"name": name, "hello": hello, "hp": hp, "x": x, "y": y}
+    return MonsterParams(name=name, hello=hello, hp=hp), x, y
 
 
 def main():
@@ -195,17 +203,12 @@ def main():
                 game.encounter(x, y)
 
             elif command == "addmon":
-                params = parse_addmon(args)
+                params, x, y = parse_addmon(args)
 
-                name, hello, hp, x, y = [value for _, value in params.items()]
+                is_replace = bool(game[x, y])
 
-                if name not in list_cows():
-                    raise UnknownMonster
-
-                is_replace = bool(game[x, y])  # type: ignore
-
-                game.addmon((x, y), message=hello, name=name)  # type: ignore
-                print(f"Added monster to ({x}, {y}) saying {hello}")
+                game.addmon(x, y, params=params)
+                print(f"Added monster to ({x}, {y}) saying {params.hello}")
 
                 if is_replace:
                     print("Replaced the old monster")
