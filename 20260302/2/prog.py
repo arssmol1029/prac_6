@@ -1,13 +1,16 @@
 import sys
 import shlex
 
+from io import StringIO
 from dataclasses import dataclass
-from cowsay import cowsay, list_cows
+from cowsay import cowsay, list_cows, read_dot_cow
 
 
 LIST_COWS = list_cows() + ["jgsbat"]
 
 VERSION = 0.1
+
+JGSBAT = read_dot_cow(open("../../mosters/jgsbat"))
 
 
 class InvalidCommand(RuntimeError):
@@ -39,7 +42,10 @@ class Monster(Event):
         self._params = params
 
     def say(self):
-        print(cowsay(message=self._params.hello, cow=self._params.name))
+        if self._params.name == "jgsbat":
+            print(cowsay(message=self._params.hello, cowfile=JGSBAT))
+        else:
+            print(cowsay(message=self._params.hello, cow=self._params.name))
 
 
 class DungeonGame:
@@ -109,7 +115,7 @@ class DungeonGame:
             raise KeyError
 
     def addmon(self, x: int, y: int, *, params: MonsterParams) -> Event:
-        if params.name not in list_cows():
+        if params.name not in LIST_COWS:
             raise UnknownMonster
 
         self[x, y] = Monster(
