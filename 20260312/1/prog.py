@@ -30,6 +30,11 @@ class Event:
         return not self._nothing
 
 
+class EmptyEvent(Event):
+    def __init__(self):
+        super().__init__(nothing=True)
+
+
 @dataclass(frozen=True, slots=True)
 class MonsterParams:
     name: str
@@ -60,7 +65,7 @@ class DungeonGame():
         for _ in range(self.size):
             row = []
             for _ in range(self.size):
-                row.append(Event())
+                row.append(EmptyEvent())
             self._dungeon.append(row)
 
     def start(self):
