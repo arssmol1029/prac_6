@@ -23,7 +23,8 @@ class UnknownMonster(RuntimeError):
 
 
 class Event:
-    def __init__(self, *, nothing: bool = True):
+    def __init__(self, *, nothing: bool = True, **kwargs):
+        super().__init__(**kwargs)
         self._nothing = nothing
 
     def __bool__(self):
@@ -35,24 +36,132 @@ class EmptyEvent(Event):
         super().__init__(nothing=True)
 
 
+class Creature:
+    def __init__(self, *, name: str, pos: tuple[int, int] = (0, 0), damage: int = 10, hp: int = 100, **kwargs):
+        super().__init__(**kwargs)
+
+        self.name = name
+        self._pos = pos
+        self._hp = hp
+        self._damage = damage
+
+        self._alive = True
+
+    def take_damage(self, damage: int) -> int:
+        start_hp = self._hp
+        
+        if damage > self._hp:
+            self._hp = 0
+            self.die()
+        else:
+            self._hp -= damage
+
+        return start_hp -self._hp
+    
+    def attack(self, creature: "Creature") -> int:
+        return creature.take_damage(self._damage)
+    
+    def die(self) -> None:
+        self._alive = False
+
+    @property
+    def alive(self) -> bool:
+        return self._alive
+    
+    @property
+    def hp(self) -> int:
+        return self._hp
+    
+    @property
+    def damage(self) -> int:
+        return self._damage
+    
+    @property
+    def pos(self) -> tuple[int, int]:
+        return self._pos
+
+    @property
+    def x(self) -> int:
+        return self._pos[0]
+
+    @property
+    def y(self) -> int:
+        return self._pos[1]
+    
+    # move commands
+    def move(self, *, dx: int = 0, dy: int = 0, size: int = 10) -> tuple[int, int]:
+        x, y = self._pos
+        x = (x + dx) % size
+        y = (y + dy) % size
+        self._pos = (x, y)
+
+        print(f"Moved to ({x}, {y})")
+        
+        return self.pos
+    
+    def go_right(self, size: int = 10) -> tuple[int, int]:
+        return self.move(dx=1, size=size)
+
+    def go_left(self, size: int = 10) -> tuple[int, int]:
+        return self.move(dx=-1, size=size)
+
+    def go_up(self, size: int = 10) -> tuple[int, int]:
+        return self.move(dy=1, size=size)
+
+    def go_down(self, size: int = 10) -> tuple[int, int]:
+        return self.move(dy=-1, size=size)
+
+
 @dataclass(frozen=True, slots=True)
 class MonsterParams:
-    name: str
-    hello: str
-    hp: int
+    name: str = "default"
+    pos: tuple[int, int] = (0, 0)
+    hello: str = "Hello!"
+    hp: int = 100
+    damage: int = 10
 
 
-class Monster(Event):
-    def __init__(self, *, params: MonsterParams):
-        super().__init__(nothing=False)
-        self._params = params
+class Monster(Event, Creature):
+    def __init__(self, *, params: MonsterParams, **kwargs):
+        super().__init__(nothing=False, name=params.name, pos=params.pos, damage=params.damage, hp=params.hp, **kwargs)
+        self.hello = params.hello
 
-    def say(self):
-        print(cowsay(message=self._params.hello, cow=self._params.name))
+    def say(self) -> None:
+        print(cowsay(message=self.hello, cow=self.name))
 
+    def take_damage(self, damage) -> int:
+        damage = super().take_damage(damage)
+        if self.alive:
+            print(f"{self.name} now has {self._hp} hp")
+        return damage
+
+    def die(self) -> None:
+        super().die()
+        print(f"{self.name} died")
+        self._nothing = True
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerParams:
+    name: str = "player"
+    pos: tuple[int, int] = (0, 0)
+    hp: int = 100
+    damage: int = 10
+
+
+class Player(Creature):
+    def __init__(self, *, params: PlayerParams, **kwargs):
+        super().__init__(name=params.name, pos=params.pos, damage=params.damage, hp=params.hp, **kwargs)
+
+    def attack(self, creature: Creature) -> int:        
+        damage = creature.take_damage(self._damage)
+        print(f"Attacked {creature.name},  damage {damage} hp")
+        return damage
+    
 
 class DungeonGame():
-    def __init__(self, size: int = 10):
+    def __init__(self, player_params: PlayerParams = PlayerParams(), size: int = 10):
+        self._player = Player(params=player_params)
         self._size = size
         self.reset()
 
@@ -72,42 +181,6 @@ class DungeonGame():
         print(f"<<< Welcome to Python-MUD {VERSION} >>>")
         self._user_pos: tuple[int, int] = (0, 0)
 
-    @property
-    def pos(self) -> tuple[int, int]:
-        return self._user_pos
-
-    @property
-    def x(self) -> int:
-        return self._user_pos[0]
-
-    @property
-    def y(self) -> int:
-        return self._user_pos[1]
-
-    # move commands
-    def move(self, *, x: int = 0, y: int = 0) -> tuple[int, int]:
-        _x, _y = self._user_pos
-        _x = (_x + x) % self.size
-        _y = (_y + y) % self.size
-        self._user_pos = (_x, _y)
-
-        print(f"Moved to ({_x}, {_y})")
-        self.encounter(_x, _y)
-        
-        return self.pos
-    
-    def go_right(self) -> tuple[int, int]:
-        return self.move(x=1)
-
-    def go_left(self) -> tuple[int, int]:
-        return self.move(x=-1)
-
-    def go_up(self) -> tuple[int, int]:
-        return self.move(y=1)
-
-    def go_down(self) -> tuple[int, int]:
-        return self.move(y=-1)
-
 
     def __getitem__(self, key: tuple[int, int]) -> Event:
         if isinstance(key, tuple) and len(key) == 2:
@@ -125,14 +198,16 @@ class DungeonGame():
 
 
     # addmon command
-    def addmon(self, x: int, y: int, *, params: MonsterParams) -> Event:
+    def addmon(self, *, params: MonsterParams) -> Event:
         if params.name not in MONSTERS_LIST:
             raise UnknownMonster
+        
+        x, y = params.pos
 
         is_replace = bool(self[x, y])
 
         self[x, y] = Monster(
-            params=MonsterParams(name=params.name, hello=params.hello, hp=params.hp)
+            params=params
         )
 
         print(f"Added monster to ({x}, {y}) saying {params.hello}")
@@ -149,7 +224,7 @@ class DungeonGame():
             event.say()
 
 
-def parse_addmon(args: list[str]) -> tuple[MonsterParams, int, int]:
+def parse_addmon(args: list[str]) -> MonsterParams:
     if len(args) < 1:
         raise InvalidCommand
 
@@ -202,30 +277,39 @@ def parse_addmon(args: list[str]) -> tuple[MonsterParams, int, int]:
     if missing:
         raise InvalidCommand
 
-    return MonsterParams(name=name, hello=hello, hp=hp), x, y
+    return MonsterParams(name=name, pos=(x, y), hello=hello, hp=hp)
 
 
 class DungeonGameCmd(cmd.Cmd):
     def __init__(self, game: DungeonGame):
         super().__init__()
-        self.game = game
+        self.prompt = "> "
+        self._game = game
+
+    def move(self, *, dx: int = 0, dy: int = 0, size: int = 10) -> tuple[int, int]:
+        x, y = self._game._player.move(dx=dx, dy=dy, size=size)
+        self._game.encounter(x, y)
 
     def do_right(self, arg: str) -> None:
-        self.game.go_right()
+        self.move(dx=1)
 
     def do_left(self, arg: str) -> None:
-        self.game.go_left()
+        self.move(dx=-1)
 
     def do_up(self, arg: str) -> None:
-        self.game.go_up()
+        self.move(dy=1)
 
     def do_down(self, arg: str) -> None:
-        self.game.go_down()
+        self.move(dy=-1)
 
     def do_addmon(self, arg: str) -> None:
         args = shlex.split(arg)
-        params, x, y = parse_addmon(args)
-        self.game.addmon(x, y, params=params)
+        try:
+            params = parse_addmon(args)
+        except InvalidCommand:
+            print("Invalid arguments")
+            return
+        self._game.addmon(params=params)
 
     def _split_for_complete(self, s: str) -> list[str]:
         try:
@@ -283,6 +367,18 @@ class DungeonGameCmd(cmd.Cmd):
 
         return [p for p in ADDMON_PARAMS if p.startswith(text) and p not in used]
     
+    def do_attack(self, arg: str) -> None:
+        pos = self._game._player.pos
+        if not self._game[pos]:
+            print("No monster here")
+            return
+        self._game._player.attack(self._game[pos])
+        if not self._game[pos]:
+            self._game[pos] = EmptyEvent() 
+    
+    def emptyline(self) -> None:
+        pass
+
     def do_EOF(self, arg: str) -> bool:
         return True
     
