@@ -204,6 +204,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 
 async def main(host: str, port: int) -> None:
     server = await asyncio.start_server(handle_client, host, port)
+    print(f"MUD server listening on {host}:{port}", file=sys.stderr)
     async with server:
         await server.serve_forever()
 
