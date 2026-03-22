@@ -288,26 +288,6 @@ def parse_addmon(args: list[str]) -> MonsterParams:
     return MonsterParams(name=name, pos=(x, y), hello=hello, hp=hp)
 
 
-def parse_attack_weapon(arg: str) -> str | None:
-    args = shlex.split(arg)
-    if not args:
-        return "sword"
-    if args[0] == "with":
-        if len(args) != 2:
-            print("Invalid arguments")
-            return None
-        name = args[1]
-    else:
-        if len(args) != 1:
-            print("Invalid arguments")
-            return None
-        name = args[0]
-    if name not in WEAPONS:
-        print("Unknown weapon")
-        return None
-    return name
-
-
 class DungeonGameCmd(cmd.Cmd):
     def __init__(self, game: DungeonGame):
         super().__init__()
@@ -400,31 +380,65 @@ class DungeonGameCmd(cmd.Cmd):
         if not tokens or tokens[0] != "attack":
             return []
         rest = tokens[1:]
+        before = line[:begidx]
 
         if not rest:
-            return [w for w in ("with",) if w.startswith(text)]
-
-        if rest[0] == "with":
-            if len(rest) > 2:
-                return []
-            return [w for w in WEAPON_NAMES if w.startswith(text)]
+            return [m for m in MONSTERS_LIST if m.startswith(text)]
 
         if len(rest) == 1:
+            if text == "" and before.endswith(" "):
+                return [w for w in ("with",) if w.startswith(text)]
+            prefix = text if text else rest[0]
+            return [m for m in MONSTERS_LIST if m.startswith(prefix)]
+
+        if rest[1] != "with" and not "with".startswith(rest[1]):
+            return []
+
+        if len(rest) == 2:
+            if rest[1] == "with":
+                return [w for w in WEAPON_NAMES if w.startswith(text)]
             return [w for w in ("with",) if w.startswith(text)]
 
+        if len(rest) == 3 and rest[1] == "with":
+            return [w for w in WEAPON_NAMES if w.startswith(text)]
+
         return []
-    
+
     def do_attack(self, arg: str) -> None:
-        weapon_name = parse_attack_weapon(arg)
-        if weapon_name is None:
+        try:
+            args = shlex.split(arg)
+        except ValueError:
+            print("Invalid arguments")
             return
-        damage = WEAPONS[weapon_name]
+        if not args:
+            print("Invalid arguments")
+            return
 
         pos = self._game._player.pos
-        if not self._game[pos]:
-            print("No monster here")
+        event = self._game[pos]
+
+        if len(args) == 1:
+            monster_name = args[0]
+            if not isinstance(event, Monster) or event.name != monster_name:
+                print(f"No {monster_name} here")
+                return
+            damage = WEAPONS["sword"]
+            self._game._player.attack(event, hit_damage=damage)
+        elif len(args) == 3 and args[1] == "with":
+            monster_name = args[0]
+            weapon_name = args[2]
+            if weapon_name not in WEAPONS:
+                print("Unknown weapon")
+                return
+            if not isinstance(event, Monster) or event.name != monster_name:
+                print(f"No {monster_name} here")
+                return
+            damage = WEAPONS[weapon_name]
+            self._game._player.attack(event, hit_damage=damage)
+        else:
+            print("Invalid arguments")
             return
-        self._game._player.attack(self._game[pos], hit_damage=damage)
+
         if not self._game[pos]:
             self._game[pos] = EmptyEvent()
     
