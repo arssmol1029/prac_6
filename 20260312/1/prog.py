@@ -1,8 +1,6 @@
-import sys
 import shlex
 import cmd
 
-from io import StringIO
 from dataclasses import dataclass
 from cowsay import cowsay, list_cows
 
@@ -10,6 +8,13 @@ from cowsay import cowsay, list_cows
 VERSION = 0.1
 
 MONSTERS_LIST = list_cows()
+
+WEAPONS: dict[str, int] = {
+    "sword": 10,
+    "spear": 15,
+    "axe": 20,
+}
+WEAPON_NAMES: tuple[str, ...] = tuple(WEAPONS.keys())
 
 ADDMON_PARAMS = ("hello", "hp", "coords")
 
@@ -56,7 +61,7 @@ class Creature:
         else:
             self._hp -= damage
 
-        return start_hp -self._hp
+        return start_hp - self._hp
     
     def attack(self, creature: "Creature") -> int:
         return creature.take_damage(self._damage)
@@ -153,8 +158,11 @@ class Player(Creature):
     def __init__(self, *, params: PlayerParams, **kwargs):
         super().__init__(name=params.name, pos=params.pos, damage=params.damage, hp=params.hp, **kwargs)
 
-    def attack(self, creature: Creature) -> int:        
-        damage = creature.take_damage(self._damage)
+    def attack(self, creature: Creature, *, hit_damage: int | None = None) -> int:
+        if hit_damage is not None:
+            damage = creature.take_damage(hit_damage)
+        else:
+            damage = super().attack(creature)
         print(f"Attacked {creature.name},  damage {damage} hp")
         return damage
     
@@ -280,6 +288,26 @@ def parse_addmon(args: list[str]) -> MonsterParams:
     return MonsterParams(name=name, pos=(x, y), hello=hello, hp=hp)
 
 
+def parse_attack_weapon(arg: str) -> str | None:
+    args = shlex.split(arg)
+    if not args:
+        return "sword"
+    if args[0] == "with":
+        if len(args) != 2:
+            print("Invalid arguments")
+            return None
+        name = args[1]
+    else:
+        if len(args) != 1:
+            print("Invalid arguments")
+            return None
+        name = args[0]
+    if name not in WEAPONS:
+        print("Unknown weapon")
+        return None
+    return name
+
+
 class DungeonGameCmd(cmd.Cmd):
     def __init__(self, game: DungeonGame):
         super().__init__()
@@ -366,15 +394,39 @@ class DungeonGameCmd(cmd.Cmd):
             return []
 
         return [p for p in ADDMON_PARAMS if p.startswith(text) and p not in used]
+
+    def complete_attack(self, text, line, begidx, endidx):
+        tokens = self._split_for_complete(line[:begidx])
+        if not tokens or tokens[0] != "attack":
+            return []
+        rest = tokens[1:]
+
+        if not rest:
+            return [w for w in ("with",) if w.startswith(text)]
+
+        if rest[0] == "with":
+            if len(rest) > 2:
+                return []
+            return [w for w in WEAPON_NAMES if w.startswith(text)]
+
+        if len(rest) == 1:
+            return [w for w in ("with",) if w.startswith(text)]
+
+        return []
     
     def do_attack(self, arg: str) -> None:
+        weapon_name = parse_attack_weapon(arg)
+        if weapon_name is None:
+            return
+        damage = WEAPONS[weapon_name]
+
         pos = self._game._player.pos
         if not self._game[pos]:
             print("No monster here")
             return
-        self._game._player.attack(self._game[pos])
+        self._game._player.attack(self._game[pos], hit_damage=damage)
         if not self._game[pos]:
-            self._game[pos] = EmptyEvent() 
+            self._game[pos] = EmptyEvent()
     
     def emptyline(self) -> None:
         pass
