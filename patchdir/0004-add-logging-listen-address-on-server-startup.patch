@@ -1,0 +1,24 @@
+From 8bb5b2a860f78a8406558ffeadd8fd6c15463ce4 Mon Sep 17 00:00:00 2001
+From: ars <arssmol1029@gmail.com>
+Date: Sun, 22 Mar 2026 17:38:09 +0300
+Subject: [PATCH 4/4] add logging listen address on server startup
+
+---
+ 20260316/1/server.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/20260316/1/server.py b/20260316/1/server.py
+index 93690ba..5735d1a 100644
+--- a/20260316/1/server.py
++++ b/20260316/1/server.py
+@@ -204,6 +204,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
+ 
+ async def main(host: str, port: int) -> None:
+     server = await asyncio.start_server(handle_client, host, port)
++    print(f"MUD server listening on {host}:{port}", file=sys.stderr)
+     async with server:
+         await server.serve_forever()
+ 
+-- 
+2.50.1 (Apple Git-155)
+
