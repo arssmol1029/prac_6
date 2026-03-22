@@ -366,15 +366,35 @@ class DungeonGameCmd(cmd.Cmd):
             return []
 
         return [p for p in ADDMON_PARAMS if p.startswith(text) and p not in used]
+
+    def complete_attack(self, text, line, begidx, endidx):
+        tokens = self._split_for_complete(line[:begidx])
+        if not tokens or tokens[0] != "attack":
+            return []
+        if len(tokens) > 2:
+            return []
+        return [name for name in MONSTERS_LIST if name.startswith(text)]
     
     def do_attack(self, arg: str) -> None:
-        pos = self._game._player.pos
-        if not self._game[pos]:
-            print("No monster here")
+        try:
+            args = shlex.split(arg)
+        except ValueError:
+            print("Invalid arguments")
             return
-        self._game._player.attack(self._game[pos])
+        if len(args) != 1:
+            print("Invalid arguments")
+            return
+        name = args[0]
+
+        pos = self._game._player.pos
+        event = self._game[pos]
+        if not isinstance(event, Monster) or event.name != name:
+            print(f"No {name} here")
+            return
+
+        self._game._player.attack(event)
         if not self._game[pos]:
-            self._game[pos] = EmptyEvent() 
+            self._game[pos] = EmptyEvent()
     
     def emptyline(self) -> None:
         pass
