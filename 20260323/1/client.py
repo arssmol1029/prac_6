@@ -1,11 +1,13 @@
 import json
+import readline
 import shlex
 import cmd
 import socket
 import sys
+import threading
 from dataclasses import dataclass
 
-from cowsay import cowsay, list_cows
+from cowsay import list_cows
 
 
 VERSION = 0.1
@@ -91,31 +93,101 @@ def parse_addmon(args: list[str]) -> MonsterParams:
     return MonsterParams(name=name, pos=(x, y), hello=hello, hp=hp)
 
 
+def read_framed(sock: socket.socket, buf: bytearray) -> str | None:
+    while True:
+        nl = buf.find(b"\n")
+        if nl < 0:
+            chunk = sock.recv(65536)
+            if not chunk:
+                return None
+            buf += chunk
+            continue
+        try:
+            n = int(bytes(buf[:nl]).decode("ascii"))
+        except ValueError:
+            return None
+        if n < 0:
+            return None
+        del buf[: nl + 1]
+        while len(buf) < n:
+            chunk = sock.recv(max(8192, n - len(buf)))
+            if not chunk:
+                return None
+            buf += chunk
+        body = bytes(buf[:n])
+        del buf[:n]
+        return body.decode("utf-8")
+
+
+def emit_server_message(cmdline: "MUDClient", text: str, lock: threading.Lock) -> None:
+    """Вывод сообщения сервера и приглашения.
+
+    Если предыдущая строка команды была пустой (только Enter) либо на сервер ушла
+    строка, оканчивающаяся на \\n (любая _send_line), показываем пустой хвост
+    после '> ' до тех пор, пока буфер readline пуст или совпадает с только что
+    отправленной строкой; иначе показываем то, что введено (get_line_buffer).
+    """
+    body = text.strip("\n")
+    prompt = cmdline.prompt
+    with lock:
+        raw = readline.get_line_buffer()
+        if cmdline._use_empty_line_after_prompt:
+            if raw == "" or (
+                cmdline._last_user_line is not None and raw != cmdline._last_user_line
+            ):
+                buf = raw
+                cmdline._use_empty_line_after_prompt = False
+            else:
+                buf = ""
+        else:
+            buf = raw
+        if body:
+            sys.stdout.write(f"\n{body}\n{prompt}{buf}")
+        else:
+            sys.stdout.write(f"\n{prompt}{buf}")
+        sys.stdout.flush()
+
+
+def receiver_thread(
+    cmdline: "MUDClient", sock: socket.socket, buf: bytearray, lock: threading.Lock
+) -> None:
+    while True:
+        text = read_framed(sock, buf)
+        if text is None:
+            with lock:
+                sys.stdout.write(
+                    f"\n[connection closed]\n{cmdline.prompt}{readline.get_line_buffer()}"
+                )
+                sys.stdout.flush()
+            return
+        emit_server_message(cmdline, text, lock)
+
+
 class MUDClient(cmd.Cmd):
-    def __init__(self, sock: socket.socket):
+    def __init__(self, sock: socket.socket, lock: threading.Lock):
         super().__init__()
         self.prompt = "> "
         self._sock = sock
-        self._r = sock.makefile("r", encoding="utf-8", newline="\n")
-        self._w = sock.makefile("w", encoding="utf-8", newline="\n")
+        self._lock = lock
+        self._use_empty_line_after_prompt = False
+        self._last_user_line: str | None = None
 
-    def _send_recv(self, line: str) -> dict:
-        self._w.write(line + "\n")
-        self._w.flush()
-        raw = self._r.readline()
-        if not raw:
-            raise ConnectionError("server closed connection")
-        return json.loads(raw)
+    def precmd(self, line: str) -> str:
+        s = line.strip()
+        if not s:
+            self._use_empty_line_after_prompt = True
+        else:
+            self._last_user_line = s
+        return line
+
+    def _send_line(self, line: str) -> None:
+        data = (line + "\n").encode("utf-8")
+        with self._lock:
+            self._sock.sendall(data)
+            self._use_empty_line_after_prompt = True
 
     def _do_move(self, dx: int, dy: int) -> None:
-        data = self._send_recv(f"move {dx} {dy}")
-        if data.get("kind") != "move":
-            return
-        x, y = data["x"], data["y"]
-        print(f"Moved to ({x}, {y})")
-        m = data.get("monster")
-        if m:
-            print(cowsay(message=m["hello"], cow=m["cow"]))
+        self._send_line(f"move {dx} {dy}")
 
     def do_right(self, arg: str) -> None:
         self._do_move(1, 0)
@@ -146,14 +218,7 @@ class MUDClient(cmd.Cmd):
             "x": params.pos[0],
             "y": params.pos[1],
         }
-        line = "addmon " + json.dumps(payload, ensure_ascii=False)
-        data = self._send_recv(line)
-        if data.get("kind") != "addmon":
-            return
-        x, y = data["x"], data["y"]
-        print(f"Added monster to ({x}, {y}) saying {params.hello}")
-        if data.get("replaced"):
-            print("Replaced the old monster")
+        self._send_line("addmon " + json.dumps(payload, ensure_ascii=False))
 
     def _split_for_complete(self, s: str) -> list[str]:
         try:
@@ -252,7 +317,8 @@ class MUDClient(cmd.Cmd):
 
         if len(args) == 1:
             monster_name = args[0]
-            damage = WEAPONS["sword"]
+            weapon_name = "sword"
+            damage = WEAPONS[weapon_name]
         elif len(args) == 3 and args[1] == "with":
             monster_name = args[0]
             weapon_name = args[2]
@@ -264,20 +330,7 @@ class MUDClient(cmd.Cmd):
             print("Invalid arguments")
             return
 
-        data = self._send_recv(f"attack {monster_name} {damage}")
-        if data.get("kind") == "no_monster":
-            print(f"No {data['name']} here")
-            return
-        if data.get("kind") != "attack":
-            return
-        name = data["name"]
-        dealt = data["dealt"]
-        remaining = data["remaining"]
-        print(f"Attacked {name},  damage {dealt} hp")
-        if remaining > 0:
-            print(f"{name} now has {remaining} hp")
-        else:
-            print(f"{name} died")
+        self._send_line(f"attack {monster_name} {damage} {weapon_name}")
 
     def emptyline(self) -> None:
         pass
@@ -289,22 +342,56 @@ class MUDClient(cmd.Cmd):
         return True
 
 
-def main():
-    host = "localhost" if len(sys.argv) < 2 else sys.argv[1]
-    port = 1337 if len(sys.argv) < 3 else int(sys.argv[2])
+def main() -> None:
+    if len(sys.argv) < 2:
+        print("usage: python client.py <username> [host] [port]", file=sys.stderr)
+        sys.exit(1)
+
+    username = sys.argv[1]
+    host = sys.argv[2] if len(sys.argv) > 2 else "localhost"
+    port = int(sys.argv[3]) if len(sys.argv) > 3 else 1337
+
+    if not username or any(c.isspace() for c in username):
+        print("username must be non-empty and contain no spaces", file=sys.stderr)
+        sys.exit(1)
 
     print(f"<<< Welcome to Python-MUD {VERSION} >>>")
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((host, port))
-        cli = MUDClient(s)
+    buf = bytearray()
+    lock = threading.Lock()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.connect((host, port))
+        sock.sendall((username + "\n").encode("utf-8"))
+
+        first = read_framed(sock, buf)
+        if first is None:
+            print("Server closed connection during login")
+            sys.exit(1)
+        welcome_text = first
+        if welcome_text.startswith("ERROR"):
+            print(welcome_text)
+            sys.exit(1)
+
+        print(welcome_text.strip("\n"))
+
+        cli = MUDClient(sock, lock)
+        recv_thr = threading.Thread(
+            target=receiver_thread,
+            args=(cli, sock, buf, lock),
+            daemon=True,
+        )
+        recv_thr.start()
+
         try:
             cli.cmdloop()
         finally:
             try:
-                cli._w.write("quit\n")
-                cli._w.flush()
-                cli._r.readline()
+                with lock:
+                    sock.sendall(b"quit\n")
+            except OSError:
+                pass
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
 

@@ -1,7 +1,15 @@
 import asyncio
+import contextlib
 import json
 import sys
 from dataclasses import dataclass
+
+from cowsay import cowsay
+
+
+def frame_text(text: str) -> bytes:
+    data = text.encode("utf-8")
+    return str(len(data)).encode("ascii") + b"\n" + data
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,116 +102,214 @@ class Player(Creature):
         super().__init__(name=params.name, pos=params.pos, damage=params.damage, hp=params.hp, **kwargs)
 
 
-class DungeonGame:
-    def __init__(self, player_params: PlayerParams = PlayerParams(), size: int = 10):
-        self._player = Player(params=player_params)
+class MultiMUDWorld:
+    def __init__(self, size: int = 10):
         self._size = size
-        self.reset()
+        self._players: dict[str, Player] = {}
+        self._dungeon: list[list[Event]] = []
+        self._reset_grid()
+
+    def _reset_grid(self) -> None:
+        self._dungeon = []
+        for _ in range(self._size):
+            self._dungeon.append([EmptyEvent() for _ in range(self._size)])
 
     @property
     def size(self) -> int:
         return self._size
 
-    def reset(self) -> None:
-        self._dungeon: list[list[Event]] = []
-        for _ in range(self.size):
-            row = []
-            for _ in range(self.size):
-                row.append(EmptyEvent())
-            self._dungeon.append(row)
-
     def __getitem__(self, key: tuple[int, int]) -> Event:
-        if isinstance(key, tuple) and len(key) == 2:
-            x, y = key
-            return self._dungeon[x][y]
-        raise KeyError
+        x, y = key
+        return self._dungeon[x][y]
 
     def __setitem__(self, key: tuple[int, int], event: Event) -> None:
-        if isinstance(key, tuple) and len(key) == 2:
-            x, y = key
-            self._dungeon[x][y] = event
-        else:
-            raise KeyError
+        x, y = key
+        self._dungeon[x][y] = event
 
-    def addmon(self, *, params: MonsterParams) -> dict:
-        x, y = params.pos
-        is_replace = bool(self[x, y])
-        self[x, y] = Monster(params=params)
-        return {"kind": "addmon", "x": x, "y": y, "replaced": is_replace}
+    def add_player(self, username: str) -> None:
+        self._players[username] = Player(params=PlayerParams(name=username))
 
-    def move_player(self, dx: int, dy: int) -> dict:
-        x, y = self._player.move(dx=dx, dy=dy, size=self._size)
+    def remove_player(self, username: str) -> None:
+        self._players.pop(username, None)
+
+    def move_player(self, username: str, dx: int, dy: int) -> list[tuple[str | None, str, str | None]]:
+        player = self._players[username]
+        x, y = player.move(dx=dx, dy=dy, size=self._size)
+        out: list[tuple[str | None, str, str | None]] = [(username, f"Moved to ({x}, {y})", None)]
         ev = self[x, y]
         if isinstance(ev, Monster):
-            return {
-                "kind": "move",
-                "x": x,
-                "y": y,
-                "monster": {"cow": ev.name, "hello": ev.hello},
-            }
-        return {"kind": "move", "x": x, "y": y, "monster": None}
+            art = cowsay(message=ev.hello, cow=ev.name)
+            out.append((username, art, None))
+        return out
 
-    def attack_monster(self, name: str, hit_damage: int) -> dict:
-        pos = self._player.pos
+    def attack_monster(
+        self, username: str, monster_name: str, hit_damage: int, weapon_name: str
+    ) -> list[tuple[str | None, str, str | None]]:
+        pos = self._players[username].pos
         ev = self[pos]
-        if not isinstance(ev, Monster) or ev.name != name:
-            return {"kind": "no_monster", "name": name}
+        if not isinstance(ev, Monster) or ev.name != monster_name:
+            return [(username, f"No {monster_name} here", None)]
         dealt = ev.take_damage(hit_damage)
         remaining = ev.hp
         if not ev.alive:
             self[pos] = EmptyEvent()
-        return {"kind": "attack", "name": name, "dealt": dealt, "remaining": remaining}
+            msg = (
+                f"{username} attacked {monster_name} with {weapon_name} for {dealt} damage "
+                f"and killed the monster!"
+            )
+        else:
+            msg = (
+                f"{username} attacked {monster_name} with {weapon_name} for {dealt} damage; "
+                f"{monster_name} has {remaining} HP left."
+            )
+        return [(None, msg, username)]
+
+    def addmon(self, username: str, params: MonsterParams) -> list[tuple[str | None, str, str | None]]:
+        x, y = params.pos
+        replaced = bool(self[x, y])
+        self[x, y] = Monster(params=params)
+        suffix = " (replaced existing monster)" if replaced else ""
+        msg = f"{username} placed monster {params.name} with {params.hp} HP at ({x}, {y}){suffix}."
+        return [(None, msg, username)]
 
 
-def handle_line(game: DungeonGame, line: str) -> dict | None:
+world = MultiMUDWorld()
+clients: dict[str, asyncio.Queue[bytes]] = {}
+
+
+async def deliver(messages: list[tuple[str | None, str, str | None]]) -> None:
+    for target, text, _origin in messages:
+        if target is None:
+            for q in clients.values():
+                await q.put(frame_text(text))
+        elif target in clients:
+            await clients[target].put(frame_text(text))
+
+
+def handle_command(username: str, line: str) -> tuple[bool, list[tuple[str | None, str, str | None]]]:
     line = line.strip()
     if not line:
-        return {"kind": "error", "msg": "empty line"}
+        return False, []
     if line == "quit":
-        return None
-    parts = line.split()
-    cmd = parts[0]
-    if cmd == "move":
-        dx, dy = int(parts[1]), int(parts[2])
-        return game.move_player(dx, dy)
-    if cmd == "attack":
-        name = parts[1]
-        hit_damage = int(parts[2])
-        return game.attack_monster(name, hit_damage)
-    if cmd == "addmon":
-        payload = json.loads(line[len("addmon ") :])
-        params = MonsterParams(
-            name=payload["name"],
-            pos=(int(payload["x"]), int(payload["y"])),
-            hello=payload["hello"],
-            hp=int(payload["hp"]),
-        )
-        return game.addmon(params=params)
-    return {"kind": "error", "msg": f"unknown command: {cmd}"}
+        world.remove_player(username)
+        return True, [(None, f"{username} left the MUD.", username)]
 
-
-async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-    game = DungeonGame()
     try:
-        while True:
-            data = await reader.readline()
-            if not data:
-                break
-            line = data.decode("utf-8")
-            out = handle_line(game, line)
-            if out is None:
-                writer.write((json.dumps({"kind": "bye"}, ensure_ascii=False) + "\n").encode("utf-8"))
-                await writer.drain()
-                break
-            writer.write((json.dumps(out, ensure_ascii=False) + "\n").encode("utf-8"))
-            await writer.drain()
+        parts = line.split()
+        if not parts:
+            return False, []
+        cmd = parts[0]
+        if cmd == "move":
+            if len(parts) != 3:
+                raise ValueError
+            dx, dy = int(parts[1]), int(parts[2])
+            return False, world.move_player(username, dx, dy)
+        if cmd == "attack":
+            if len(parts) != 4:
+                raise ValueError
+            monster_name = parts[1]
+            hit_damage = int(parts[2])
+            weapon_name = parts[3]
+            return False, world.attack_monster(username, monster_name, hit_damage, weapon_name)
+        if cmd == "addmon":
+            payload = json.loads(line[len("addmon ") :])
+            params = MonsterParams(
+                name=payload["name"],
+                pos=(int(payload["x"]), int(payload["y"])),
+                hello=payload["hello"],
+                hp=int(payload["hp"]),
+            )
+            return False, world.addmon(username, params)
+        return False, [(username, f"Unknown command: {cmd}", None)]
+    except (ValueError, json.JSONDecodeError, KeyError, TypeError):
+        return False, [(username, "Invalid command or parameters.", None)]
+
+
+async def reject_handshake(writer: asyncio.StreamWriter, message: str) -> None:
+    try:
+        writer.write(frame_text(message))
+        await writer.drain()
     finally:
         writer.close()
         await writer.wait_closed()
 
 
+async def mud_session(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    first = await reader.readline()
+    if not first:
+        writer.close()
+        await writer.wait_closed()
+        return
+
+    username = first.decode("utf-8").strip()
+    if not username or any(c.isspace() for c in username):
+        await reject_handshake(writer, "ERROR invalid username (non-empty, no spaces)")
+        return
+    if username in clients:
+        await reject_handshake(writer, "ERROR username already connected")
+        return
+
+    queue: asyncio.Queue[bytes] = asyncio.Queue()
+    clients[username] = queue
+    world.add_player(username)
+
+    send = asyncio.create_task(reader.readline())
+    receive = asyncio.create_task(queue.get())
+    user_initiated_quit = False
+
+    try:
+        for u, q in clients.items():
+            if u != username:
+                await q.put(frame_text(f"{username} joined the MUD."))
+        await queue.put(frame_text(f"Welcome {username}, you are connected to Python-MUD."))
+
+        running = True
+        while running and not reader.at_eof():
+            done, _pending = await asyncio.wait(
+                {send, receive},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in done:
+                if task is send:
+                    data = task.result()
+                    send = asyncio.create_task(reader.readline())
+                    if not data:
+                        running = False
+                        break
+                    line = data.decode("utf-8")
+                    disconnect, msgs = handle_command(username, line.rstrip("\r\n"))
+                    await deliver(msgs)
+                    if disconnect:
+                        user_initiated_quit = True
+                        running = False
+                        break
+                elif task is receive:
+                    blob = task.result()
+                    receive = asyncio.create_task(queue.get())
+                    writer.write(blob)
+                    await writer.drain()
+    finally:
+        send.cancel()
+        receive.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await send
+        with contextlib.suppress(asyncio.CancelledError):
+            await receive
+
+        was_in_clients = username in clients
+        if was_in_clients:
+            del clients[username]
+        world.remove_player(username)
+        if was_in_clients and not user_initiated_quit:
+            note = frame_text(f"{username} disconnected from the MUD.")
+            for q in clients.values():
+                await q.put(note)
+        writer.close()
+        await writer.wait_closed()
+
+
 async def main(host: str, port: int) -> None:
-    server = await asyncio.start_server(handle_client, host, port)
+    server = await asyncio.start_server(mud_session, host, port)
     print(f"MUD server listening on {host}:{port}", file=sys.stderr)
     async with server:
         await server.serve_forever()
