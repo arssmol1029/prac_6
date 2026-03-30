@@ -5,128 +5,20 @@ import cmd
 import socket
 import sys
 import threading
-from dataclasses import dataclass
 
-from cowsay import list_cows
-
-
-VERSION = 0.1
-
-MONSTERS_LIST = list_cows()
-
-WEAPONS: dict[str, int] = {
-    "sword": 10,
-    "spear": 15,
-    "axe": 20,
-}
-WEAPON_NAMES: tuple[str, ...] = tuple(WEAPONS.keys())
-
-ADDMON_PARAMS = ("hello", "hp", "coords")
-
-
-class InvalidCommand(RuntimeError):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class MonsterParams:
-    name: str = "default"
-    pos: tuple[int, int] = (0, 0)
-    hello: str = "Hello!"
-    hp: int = 100
-    damage: int = 10
-
-
-def parse_addmon(args: list[str]) -> MonsterParams:
-    if len(args) < 1:
-        raise InvalidCommand
-
-    name = args[0]
-    i = 1
-
-    seen: set[str] = set()
-    hello: str
-    hp: int
-    x: int
-    y: int
-
-    def need(n: int) -> None:
-        if i + n >= len(args):
-            raise InvalidCommand
-
-    while i < len(args):
-        key = args[i]
-        if key not in ADDMON_PARAMS:
-            raise InvalidCommand
-
-        if key in seen:
-            raise InvalidCommand
-        seen.add(key)
-
-        if key == "hello":
-            need(1)
-            hello = args[i + 1]
-            i += 2
-
-        elif key == "hp":
-            need(1)
-            try:
-                hp = int(args[i + 1])
-            except ValueError:
-                raise InvalidCommand
-            if hp <= 0:
-                raise InvalidCommand
-            i += 2
-
-        else:
-            need(2)
-            try:
-                x, y = int(args[i + 1]), int(args[i + 2])
-            except ValueError:
-                raise InvalidCommand
-            i += 3
-
-    missing = [p for p in ADDMON_PARAMS if p not in seen]
-    if missing:
-        raise InvalidCommand
-
-    return MonsterParams(name=name, pos=(x, y), hello=hello, hp=hp)
-
-
-def read_framed(sock: socket.socket, buf: bytearray) -> str | None:
-    while True:
-        nl = buf.find(b"\n")
-        if nl < 0:
-            chunk = sock.recv(65536)
-            if not chunk:
-                return None
-            buf += chunk
-            continue
-        try:
-            n = int(bytes(buf[:nl]).decode("ascii"))
-        except ValueError:
-            return None
-        if n < 0:
-            return None
-        del buf[: nl + 1]
-        while len(buf) < n:
-            chunk = sock.recv(max(8192, n - len(buf)))
-            if not chunk:
-                return None
-            buf += chunk
-        body = bytes(buf[:n])
-        del buf[:n]
-        return body.decode("utf-8")
+from mood.common.addmon import parse_addmon
+from mood.common.constants import (
+    ADDMON_PARAMS,
+    MONSTERS_LIST,
+    WEAPONS,
+    WEAPON_NAMES,
+)
+from mood.common.framing import read_framed
+from mood.common.models import InvalidCommand
+from mood.common.sayall import parse_sayall
 
 
 def emit_server_message(cmdline: "MUDClient", text: str, lock: threading.Lock) -> None:
-    """Вывод сообщения сервера и приглашения.
-
-    Если предыдущая строка команды была пустой (только Enter) либо на сервер ушла
-    строка, оканчивающаяся на \\n (любая _send_line), показываем пустой хвост
-    после '> ' до тех пор, пока буфер readline пуст или совпадает с только что
-    отправленной строкой; иначе показываем то, что введено (get_line_buffer).
-    """
     body = text.strip("\n")
     prompt = cmdline.prompt
     with lock:
@@ -155,9 +47,9 @@ def receiver_thread(
         text = read_framed(sock, buf)
         if text is None:
             with lock:
-                sys.stdout.write(
-                    f"\n[connection closed]\n{cmdline.prompt}{readline.get_line_buffer()}"
-                )
+                tail = readline.get_line_buffer()
+                line = f"\n[connection closed]\n{cmdline.prompt}{tail}"
+                sys.stdout.write(line)
                 sys.stdout.flush()
             return
         emit_server_message(cmdline, text, lock)
@@ -219,6 +111,14 @@ class MUDClient(cmd.Cmd):
             "y": params.pos[1],
         }
         self._send_line("addmon " + json.dumps(payload, ensure_ascii=False))
+
+    def do_sayall(self, arg: str) -> None:
+        try:
+            msg = parse_sayall(arg)
+        except InvalidCommand:
+            print("Invalid arguments")
+            return
+        self._send_line("sayall " + json.dumps(msg, ensure_ascii=False))
 
     def _split_for_complete(self, s: str) -> list[str]:
         try:
@@ -340,61 +240,3 @@ class MUDClient(cmd.Cmd):
 
     def do_exit(self, arg: str) -> bool:
         return True
-
-
-def main() -> None:
-    if len(sys.argv) < 2:
-        print("usage: python client.py <username> [host] [port]", file=sys.stderr)
-        sys.exit(1)
-
-    username = sys.argv[1]
-    host = sys.argv[2] if len(sys.argv) > 2 else "localhost"
-    port = int(sys.argv[3]) if len(sys.argv) > 3 else 1337
-
-    if not username or any(c.isspace() for c in username):
-        print("username must be non-empty and contain no spaces", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"<<< Welcome to Python-MUD {VERSION} >>>")
-
-    buf = bytearray()
-    lock = threading.Lock()
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.connect((host, port))
-        sock.sendall((username + "\n").encode("utf-8"))
-
-        first = read_framed(sock, buf)
-        if first is None:
-            print("Server closed connection during login")
-            sys.exit(1)
-        welcome_text = first
-        if welcome_text.startswith("ERROR"):
-            print(welcome_text)
-            sys.exit(1)
-
-        print(welcome_text.strip("\n"))
-
-        cli = MUDClient(sock, lock)
-        recv_thr = threading.Thread(
-            target=receiver_thread,
-            args=(cli, sock, buf, lock),
-            daemon=True,
-        )
-        recv_thr.start()
-
-        try:
-            cli.cmdloop()
-        finally:
-            try:
-                with lock:
-                    sock.sendall(b"quit\n")
-            except OSError:
-                pass
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-
-
-if __name__ == "__main__":
-    main()
