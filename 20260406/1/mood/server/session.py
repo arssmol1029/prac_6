@@ -1,8 +1,10 @@
 import asyncio
 import contextlib
 import json
+import random
 import sys
 
+from cowsay import cowsay
 from mood.common.framing import frame_text
 from mood.common.models import MonsterParams
 from mood.common.routing import RouterBatch
@@ -14,6 +16,12 @@ clients: dict[str, asyncio.Queue[bytes]] = {}
 
 
 async def deliver(messages: RouterBatch) -> None:
+    """
+    Отправить сообщения игрокам.
+    
+    Args:
+        messages: Список сообщений для отправки
+    """
     for target, text, _origin in messages:
         if target is None:
             for q in clients.values():
@@ -23,6 +31,21 @@ async def deliver(messages: RouterBatch) -> None:
 
 
 def handle_command(username: str, line: str) -> tuple[bool, RouterBatch]:
+    """
+    Обработать команду от пользователя.
+    
+    Args:
+        username: Имя пользователя, отправившего команду
+        line: Строка с командой
+        
+    Returns:
+        Кортеж (disconnect, messages), где:
+        - disconnect: True если пользователь хочет отключиться
+        - messages: Список сообщений для отправки
+        
+    Raises:
+        ValueError: При некорректных параметрах команды
+    """
     line = line.strip()
     if not line:
         return False, []
@@ -76,6 +99,13 @@ def handle_command(username: str, line: str) -> tuple[bool, RouterBatch]:
 
 
 async def reject_handshake(writer: asyncio.StreamWriter, message: str) -> None:
+    """
+    Отклонить рукопожатие и закрыть соединение.
+    
+    Args:
+        writer: StreamWriter для отправки сообщения
+        message: Сообщение об ошибке
+    """
     try:
         writer.write(frame_text(message))
         await writer.drain()
@@ -88,6 +118,13 @@ async def mud_session(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
 ) -> None:
+    """
+    Обработать сессию подключения игрока.
+    
+    Args:
+        reader: StreamReader для чтения данных от клиента
+        writer: StreamWriter для отправки данных клиенту
+    """
     first = await reader.readline()
     if not first:
         writer.close()
@@ -162,8 +199,65 @@ async def mud_session(
         await writer.wait_closed()
 
 
+async def monster_wandering_task() -> None:
+    """
+    Фоновая задача для перемещения монстров каждые 30 секунд.
+    
+    Первый раз запускается через 30 секунд после старта сервера.
+    """
+    await asyncio.sleep(30)
+    
+    while True:
+        monsters = world.get_all_monsters()
+        
+        if not monsters:
+            await asyncio.sleep(30)
+            continue
+        
+        success = False
+        attempts = 0
+        max_attempts = len(monsters) * 4
+        
+        while not success and attempts < max_attempts:
+            old_pos, monster = random.choice(monsters)
+            
+            directions = ['right', 'left', 'up', 'down']
+            direction = random.choice(directions)
+            
+            success, new_pos, direction_name = world.move_monster(old_pos, direction)
+            attempts += 1
+            
+            if success:
+                msg = f"{monster.name} moved one cell {direction_name}"
+                await deliver([(None, msg, None)])
+                
+                players_at_pos = world.get_players_at(new_pos)
+                for player_name in players_at_pos:
+                    art = cowsay(message=monster.hello, cow=monster.name)
+                    await deliver([(player_name, art, None)])
+        
+        await asyncio.sleep(30)
+
+
 async def main(host: str, port: int) -> None:
+    """
+    Основная функция запуска сервера.
+    
+    Args:
+        host: Хост для прослушивания
+        port: Порт для прослушивания
+    """
     server = await asyncio.start_server(mud_session, host, port)
     print(f"MOOD server listening on {host}:{port}", file=sys.stderr)
+    
+    wandering_task = asyncio.create_task(monster_wandering_task())
+    
     async with server:
-        await server.serve_forever()
+        try:
+            await server.serve_forever()
+        finally:
+            wandering_task.cancel()
+            try:
+                await wandering_task
+            except asyncio.CancelledError:
+                pass
