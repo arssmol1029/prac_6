@@ -8,16 +8,20 @@ from mood.common.framing import read_framed
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        print(
-            "usage: python3 -m mood.client <username> [host] [port]",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    username = sys.argv[1]
-    host = sys.argv[2] if len(sys.argv) > 2 else "localhost"
-    port = int(sys.argv[3]) if len(sys.argv) > 3 else 1337
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="MOOD MUD Client")
+    parser.add_argument("username", help="Username for the game")
+    parser.add_argument("host", nargs="?", default="localhost", help="Server host (default: localhost)")
+    parser.add_argument("port", nargs="?", type=int, default=1337, help="Server port (default: 1337)")
+    parser.add_argument("--file", help="Read commands from file instead of interactive input")
+    
+    args = parser.parse_args()
+    
+    username = args.username
+    host = args.host
+    port = args.port
+    file_path = args.file
 
     if not username or any(c.isspace() for c in username):
         print("username must be non-empty and contain no spaces", file=sys.stderr)
@@ -46,22 +50,60 @@ def main() -> None:
         recv_thr = threading.Thread(
             target=receiver_thread,
             args=(cli, sock, buf, lock),
-            daemon=True,
+            daemon=False,
         )
         recv_thr.start()
 
-        try:
-            cli.cmdloop()
-        finally:
+        if file_path:
+            cli.set_file_mode(True)
             try:
-                with lock:
-                    sock.sendall(b"quit\n")
-            except OSError:
-                pass
+                if not file_path.endswith('.mood'):
+                    print(f"Warning: File extension should be '.mood', but got '{file_path}'", file=sys.stderr)
+                
+                with open(file_path, 'r') as f:
+                    commands = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
+                
+                import time
+                for command in commands:
+                    if command.lower() == 'quit':
+                        break
+                    cli.onecmd(command)
+                    time.sleep(1)
+                
+                time.sleep(0.5)
+                
+            except FileNotFoundError:
+                print(f"Error: File '{file_path}' not found", file=sys.stderr)
+                sys.exit(1)
+            except Exception as e:
+                print(f"Error reading file: {e}", file=sys.stderr)
+                sys.exit(1)
+            finally:
+                try:
+                    with lock:
+                        sock.sendall(b"quit\n")
+                except OSError:
+                    pass
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                sock.close()
+        else:
             try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
+                cli.cmdloop()
+            except KeyboardInterrupt:
+                print("\nGoodbye!")
+            finally:
+                try:
+                    with lock:
+                        sock.sendall(b"quit\n")
+                except OSError:
+                    pass
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
 
 
 if __name__ == "__main__":

@@ -44,15 +44,23 @@ def receiver_thread(
     cmdline: "MUDClient", sock: socket.socket, buf: bytearray, lock: threading.Lock
 ) -> None:
     while True:
-        text = read_framed(sock, buf)
-        if text is None:
+        try:
+            text = read_framed(sock, buf)
+            if text is None:
+                with lock:
+                    tail = readline.get_line_buffer()
+                    line = f"\n[connection closed]\n{cmdline.prompt}{tail}"
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                return
+            emit_server_message(cmdline, text, lock)
+        except OSError:
             with lock:
                 tail = readline.get_line_buffer()
                 line = f"\n[connection closed]\n{cmdline.prompt}{tail}"
                 sys.stdout.write(line)
                 sys.stdout.flush()
             return
-        emit_server_message(cmdline, text, lock)
 
 
 class MUDClient(cmd.Cmd):
@@ -63,6 +71,11 @@ class MUDClient(cmd.Cmd):
         self._lock = lock
         self._use_empty_line_after_prompt = False
         self._last_user_line: str | None = None
+        self._file_mode = False
+
+    def set_file_mode(self, enabled: bool) -> None:
+        """Установить режим работы с файлом."""
+        self._file_mode = enabled
 
     def precmd(self, line: str) -> str:
         s = line.strip()
@@ -71,6 +84,19 @@ class MUDClient(cmd.Cmd):
         else:
             self._last_user_line = s
         return line
+
+    def onecmd(self, line: str) -> bool:
+        """
+        Обработать одну команду.
+        
+        В режиме файла не выводит приглашение и не обрабатывает пустые строки.
+        """
+        if self._file_mode:
+            if not line.strip():
+                return False
+            return super().onecmd(line)
+        else:
+            return super().onecmd(line)
 
     def _send_line(self, line: str) -> None:
         data = (line + "\n").encode("utf-8")
