@@ -238,6 +238,13 @@ class MUDClient(cmd.Cmd):
             return
         self._send_line(f"movemonsters {s}")
 
+    def do_locale(self, arg: str) -> None:
+        name = arg.strip()
+        if not name:
+            print("Invalid arguments")
+            return
+        self._send_line(f"locale {name}")
+
     def do_attack(self, arg: str) -> None:
         try:
             args = shlex.split(arg)

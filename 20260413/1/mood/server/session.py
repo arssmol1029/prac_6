@@ -7,12 +7,20 @@ import sys
 from cowsay import cowsay
 from mood.common.framing import frame_text
 from mood.common.models import MonsterParams
-from mood.common.routing import RouterBatch
+from mood.common.routing import MessageBody, RouterBatch
+from mood.server.l10n import LocaleContext
 from mood.server.world import MultiMUDWorld
 
 
 world = MultiMUDWorld()
 clients: dict[str, asyncio.Queue[bytes]] = {}
+client_locales: dict[str, str] = {}
+
+
+def _resolve_message(body: MessageBody, locale: str) -> str:
+    if callable(body):
+        return body(locale)
+    return body
 
 
 async def deliver(messages: RouterBatch) -> None:
@@ -22,11 +30,15 @@ async def deliver(messages: RouterBatch) -> None:
     Args:
         messages: Список сообщений для отправки
     """
-    for target, text, _origin in messages:
+    for target, body, _origin in messages:
         if target is None:
-            for q in clients.values():
+            for uname, q in clients.items():
+                loc = client_locales.get(uname, "")
+                text = _resolve_message(body, loc)
                 await q.put(frame_text(text))
         elif target in clients:
+            loc = client_locales.get(target, "")
+            text = _resolve_message(body, loc)
             await clients[target].put(frame_text(text))
 
 
@@ -51,7 +63,16 @@ def handle_command(username: str, line: str) -> tuple[bool, RouterBatch]:
         return False, []
     if line == "quit":
         world.remove_player(username)
-        return True, [(None, f"{username} left the MOOD.", username)]
+        return True, [
+            (
+                None,
+                lambda loc, u=username: LocaleContext(loc).gettext(
+                    "%(user)s left the MOOD."
+                )
+                % {"user": u},
+                username,
+            )
+        ]
 
     try:
         parts = line.split()
@@ -92,16 +113,61 @@ def handle_command(username: str, line: str) -> tuple[bool, RouterBatch]:
             text = json.loads(rest)
             if not isinstance(text, str):
                 raise ValueError
-            return False, [(None, f"{username}: {text}", username)]
+            return False, [
+                (
+                    None,
+                    lambda loc, u=username, t=text: LocaleContext(loc).gettext(
+                        "%(user)s: %(text)s"
+                    )
+                    % {"user": u, "text": t},
+                    username,
+                )
+            ]
         if cmd == "movemonsters":
             if len(parts) != 2 or parts[1] not in ("on", "off"):
                 raise ValueError
             world.moving_monsters = parts[1] == "on"
-            state = "on" if world.moving_monsters else "off"
-            return False, [(username, f"Moving monsters: {state}", None)]
-        return False, [(username, f"Unknown command: {cmd}", None)]
+            key = (
+                "Moving monsters: on"
+                if world.moving_monsters
+                else "Moving monsters: off"
+            )
+            return False, [(username, lambda loc, k=key: LocaleContext(loc).gettext(k), None)]
+        if cmd == "locale":
+            if len(parts) != 2:
+                raise ValueError
+            loc_name = parts[1]
+            client_locales[username] = loc_name
+            return False, [
+                (
+                    username,
+                    lambda loc, n=loc_name: LocaleContext(loc).gettext(
+                        "Set up locale: %(name)s"
+                    )
+                    % {"name": n},
+                    None,
+                )
+            ]
+        return False, [
+            (
+                username,
+                lambda loc, c=cmd: LocaleContext(loc).gettext(
+                    "Unknown command: %(cmd)s"
+                )
+                % {"cmd": c},
+                None,
+            )
+        ]
     except (ValueError, json.JSONDecodeError, KeyError, TypeError):
-        return False, [(username, "Invalid command or parameters.", None)]
+        return False, [
+            (
+                username,
+                lambda loc: LocaleContext(loc).gettext(
+                    "Invalid command or parameters."
+                ),
+                None,
+            )
+        ]
 
 
 async def reject_handshake(writer: asyncio.StreamWriter, message: str) -> None:
@@ -157,8 +223,27 @@ async def mud_session(
     try:
         for u, q in clients.items():
             if u != username:
-                await q.put(frame_text(f"{username} joined the MOOD."))
-        await queue.put(frame_text(f"Welcome {username}, you are connected to MOOD."))
+                u_loc = client_locales.get(u, "")
+                join_body: MessageBody = (
+                    lambda loc, un=username: LocaleContext(loc).gettext(
+                        "%(user)s joined the MOOD."
+                    )
+                    % {"user": un}
+                )
+                await q.put(frame_text(_resolve_message(join_body, u_loc)))
+        welcome_body: MessageBody = (
+            lambda loc, un=username: LocaleContext(loc).gettext(
+                "Welcome %(user)s, you are connected to MOOD."
+            )
+            % {"user": un}
+        )
+        await queue.put(
+            frame_text(
+                _resolve_message(
+                    welcome_body, client_locales.get(username, "")
+                )
+            )
+        )
 
         running = True
         while running and not reader.at_eof():
@@ -196,11 +281,21 @@ async def mud_session(
         was_in_clients = username in clients
         if was_in_clients:
             del clients[username]
+            client_locales.pop(username, None)
         world.remove_player(username)
         if was_in_clients and not user_initiated_quit:
-            note = frame_text(f"{username} disconnected from the MOOD.")
-            for q in clients.values():
-                await q.put(note)
+            await deliver(
+                [
+                    (
+                        None,
+                        lambda loc, u=username: LocaleContext(loc).gettext(
+                            "%(user)s disconnected from the MOOD."
+                        )
+                        % {"user": u},
+                        None,
+                    )
+                ]
+            )
         writer.close()
         await writer.wait_closed()
 
@@ -234,8 +329,16 @@ async def monster_wandering_task() -> None:
             attempts += 1
             
             if success:
-                msg = f"{monster.name} moved one cell {direction_name}"
-                await deliver([(None, msg, None)])
+                mname, dname = monster.name, direction_name
+
+                def wander_body(loc: str, mn=mname, dn=dname) -> str:
+                    ctx = LocaleContext(loc)
+                    return ctx.gettext("%(monster)s moved one cell %(direction)s.") % {
+                        "monster": mn,
+                        "direction": ctx.pgettext("compass", dn),
+                    }
+
+                await deliver([(None, wander_body, None)])
                 
                 players_at_pos = world.get_players_at(new_pos)
                 for player_name in players_at_pos:

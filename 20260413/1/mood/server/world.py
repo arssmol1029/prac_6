@@ -4,6 +4,7 @@ from cowsay import cowsay
 
 from mood.common.models import MonsterParams
 from mood.common.routing import RouterBatch
+from mood.server.l10n import LocaleContext
 
 
 class Event:
@@ -252,7 +253,16 @@ class MultiMUDWorld:
         """
         player = self._players[username]
         x, y = player.move(dx=dx, dy=dy, size=self._size)
-        out: RouterBatch = [(username, f"Moved to ({x}, {y})", None)]
+        out: RouterBatch = [
+            (
+                username,
+                lambda loc, px=x, py=y: LocaleContext(loc).gettext(
+                    "Moved to (%(x)d, %(y)d)"
+                )
+                % {"x": px, "y": py},
+                None,
+            )
+        ]
         ev = self[x, y]
         if isinstance(ev, Monster):
             art = cowsay(message=ev.hello, cow=ev.name)
@@ -281,18 +291,49 @@ class MultiMUDWorld:
         pos = self._players[username].pos
         ev = self[pos]
         if not isinstance(ev, Monster) or ev.name != monster_name:
-            return [(username, f"No {monster_name} here", None)]
+            return [
+                (
+                    username,
+                    lambda loc, mn=monster_name: LocaleContext(loc).gettext(
+                        "No %(monster)s here"
+                    )
+                    % {"monster": mn},
+                    None,
+                )
+            ]
         dealt = ev.take_damage(hit_damage)
         remaining = ev.hp
-        if not ev.alive:
+        alive = ev.alive
+        if not alive:
             self[pos] = EmptyEvent()
-            head = f"{username} attacked {monster_name} with {weapon_name}"
-            msg = f"{head} for {dealt} damage and killed the monster!"
-        else:
-            head = f"{username} attacked {monster_name} with {weapon_name}"
-            tail = f"{monster_name} has {remaining} HP left."
-            msg = f"{head} for {dealt} damage; {tail}"
-        return [(None, msg, username)]
+
+        def broadcast(loc: str) -> str:
+            ctx = LocaleContext(loc)
+            dealt_hp = ctx.hp_phrase(dealt)
+            weapon_disp = ctx.weapon_label(weapon_name)
+            if not alive:
+                return ctx.gettext(
+                    "%(attacker)s attacked %(monster)s with %(weapon)s for %(dealt_hp)s and "
+                    "killed the monster!"
+                ) % {
+                    "attacker": username,
+                    "monster": monster_name,
+                    "weapon": weapon_disp,
+                    "dealt_hp": dealt_hp,
+                }
+            remaining_hp = ctx.hp_phrase(remaining)
+            return ctx.gettext(
+                "%(attacker)s attacked %(monster)s with %(weapon)s for %(dealt_hp)s; "
+                "%(monster)s has %(remaining_hp)s left."
+            ) % {
+                "attacker": username,
+                "monster": monster_name,
+                "weapon": weapon_disp,
+                "dealt_hp": dealt_hp,
+                "remaining_hp": remaining_hp,
+            }
+
+        return [(None, broadcast, username)]
 
     def addmon(self, username: str, params: MonsterParams) -> RouterBatch:
         """
@@ -308,11 +349,25 @@ class MultiMUDWorld:
         x, y = params.pos
         replaced = bool(self[x, y])
         self[x, y] = Monster(params=params)
-        suffix = " (replaced existing monster)" if replaced else ""
-        who = f"{username} placed monster {params.name}"
-        stats = f"with {params.hp} HP at ({x}, {y}){suffix}."
-        msg = f"{who} {stats}"
-        return [(None, msg, username)]
+
+        def broadcast(loc: str) -> str:
+            ctx = LocaleContext(loc)
+            suffix = (
+                ctx.gettext(" (replaced existing monster)") if replaced else ""
+            )
+            hp = ctx.hp_phrase(params.hp)
+            return ctx.gettext(
+                "%(user)s placed monster %(monster)s with %(hp)s at (%(x)d, %(y)d)%(suffix)s."
+            ) % {
+                "user": username,
+                "monster": params.name,
+                "hp": hp,
+                "x": x,
+                "y": y,
+                "suffix": suffix,
+            }
+
+        return [(None, broadcast, username)]
 
     def get_all_monsters(self) -> list[tuple[tuple[int, int], "Monster"]]:
         """
