@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mood"
+version = "0.1.0"
+dependencies = [
+    "cowsay",
+    "babel",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mood*"]
+
+[tool.setuptools.package-data]
+"mood.server" = ["locales/**/*.mo", "locales/**/*.po"]
