@@ -20,25 +20,32 @@ from mood.common.models import InvalidCommand
 from mood.common.sayall import parse_sayall
 
 
+def _tail_after_server_message(cmdline: "MUDClient") -> str:
+    raw = readline.get_line_buffer().replace("\n", "").replace("\r", "")
+    sup = cmdline._suppress_echo_line
+    if sup is None:
+        return raw
+    sup_n = sup.strip()
+    raw_n = raw.strip()
+    if not raw_n or raw_n == sup_n:
+        return ""
+    return raw
+
+
 def emit_server_message(cmdline: "MUDClient", text: str, lock: threading.Lock) -> None:
+    """
+    Вывод сообщения с сервера: отвечает **поток приёма** (``receiver_thread``), т.к. только
+    он читает сокет. Readline и ``input()`` живут в **главном** потоке — их состояние и
+    вывод в stdout гонятся с фоновым потоком, отсюда артефакты без нормализации/подавления.
+    """
     body = text.strip("\n")
     prompt = cmdline.prompt
     with lock:
-        raw = readline.get_line_buffer()
-        if cmdline._use_empty_line_after_prompt:
-            if raw == "" or (
-                cmdline._last_user_line is not None and raw != cmdline._last_user_line
-            ):
-                buf = raw
-                cmdline._use_empty_line_after_prompt = False
-            else:
-                buf = ""
-        else:
-            buf = raw
+        tail = _tail_after_server_message(cmdline)
         if body:
-            sys.stdout.write(f"\n{body}\n{prompt}{buf}")
+            sys.stdout.write(f"\n{body}\n{prompt}{tail}")
         else:
-            sys.stdout.write(f"\n{prompt}{buf}")
+            sys.stdout.write(f"\n{prompt}{tail}")
         sys.stdout.flush()
 
 
@@ -50,17 +57,15 @@ def receiver_thread(
             text = read_framed(sock, buf)
             if text is None:
                 with lock:
-                    tail = readline.get_line_buffer()
-                    line = f"\n[connection closed]\n{cmdline.prompt}{tail}"
-                    sys.stdout.write(line)
+                    tail = _tail_after_server_message(cmdline)
+                    sys.stdout.write(f"\n[connection closed]\n{cmdline.prompt}{tail}")
                     sys.stdout.flush()
                 return
             emit_server_message(cmdline, text, lock)
         except OSError:
             with lock:
-                tail = readline.get_line_buffer()
-                line = f"\n[connection closed]\n{cmdline.prompt}{tail}"
-                sys.stdout.write(line)
+                tail = _tail_after_server_message(cmdline)
+                sys.stdout.write(f"\n[connection closed]\n{cmdline.prompt}{tail}")
                 sys.stdout.flush()
             return
 
@@ -71,7 +76,7 @@ class MUDClient(cmd.Cmd):
         self.prompt = "> "
         self._sock = sock
         self._lock = lock
-        self._use_empty_line_after_prompt = False
+        self._suppress_echo_line: str | None = None
         self._last_user_line: str | None = None
         self._file_mode = False
 
@@ -81,9 +86,7 @@ class MUDClient(cmd.Cmd):
 
     def precmd(self, line: str) -> str:
         s = line.strip()
-        if not s:
-            self._use_empty_line_after_prompt = True
-        else:
+        if s:
             self._last_user_line = s
         return line
 
@@ -104,7 +107,7 @@ class MUDClient(cmd.Cmd):
         data = (line + "\n").encode("utf-8")
         with self._lock:
             self._sock.sendall(data)
-            self._use_empty_line_after_prompt = True
+            self._suppress_echo_line = self._last_user_line
 
     def _do_move(self, dx: int, dy: int) -> None:
         self._send_line(f"move {dx} {dy}")
