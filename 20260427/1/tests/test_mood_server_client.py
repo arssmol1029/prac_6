@@ -53,6 +53,9 @@ class TestMoodServerClientCommands(unittest.TestCase):
             welcome.startswith("ERROR"),
             msg=f"login failed: {welcome!r}",
         )
+        self._send_line("locale ru_RU.UTF8")
+        locale_ack = self._read_frame()
+        self.assertIn("Установлена локаль", locale_ack)
 
     def tearDown(self) -> None:
         try:
@@ -96,7 +99,7 @@ class TestMoodServerClientCommands(unittest.TestCase):
         payload = self._addmon_payload()
         self._send_line("addmon " + json.dumps(payload, ensure_ascii=False))
         msg = self._read_frame()
-        self.assertIn("placed monster", msg)
+        self.assertIn("разместил монстра", msg)
         self.assertIn(payload["name"], msg)
         self.assertIn("(1, 0)", msg)
 
@@ -107,7 +110,7 @@ class TestMoodServerClientCommands(unittest.TestCase):
 
         self._send_line("move 1 0")
         moved = self._read_frame()
-        self.assertIn("Moved to (1, 0)", moved)
+        self.assertIn("Переход в клетку (1, 0)", moved)
 
         greeting = self._read_frame()
         self.assertIn(payload["hello"], greeting)
@@ -128,9 +131,9 @@ class TestMoodServerClientCommands(unittest.TestCase):
         weapon = "sword"
         self._send_line(f"attack {monster} {dmg} {weapon}")
         outcome = self._read_frame()
-        self.assertIn("attacked", outcome)
+        self.assertIn("атаковал", outcome)
         self.assertIn(monster, outcome)
-        self.assertIn("killed the monster", outcome)
+        self.assertIn("убит", outcome)
 
 
 class TestFramingRoundTrip(unittest.TestCase):

@@ -127,12 +127,13 @@ def handle_command(username: str, line: str) -> tuple[bool, RouterBatch]:
             if len(parts) != 2 or parts[1] not in ("on", "off"):
                 raise ValueError
             world.moving_monsters = parts[1] == "on"
-            key = (
-                "Moving monsters: on"
-                if world.moving_monsters
-                else "Moving monsters: off"
-            )
-            return False, [(username, lambda loc, k=key: LocaleContext(loc).gettext(k), None)]
+            if world.moving_monsters:
+                body: MessageBody = lambda loc: LocaleContext(loc).gettext(
+                    "Moving monsters: on"
+                )
+            else:
+                body = lambda loc: LocaleContext(loc).gettext("Moving monsters: off")
+            return False, [(username, body, None)]
         if cmd == "locale":
             if len(parts) != 2:
                 raise ValueError
@@ -333,9 +334,19 @@ async def monster_wandering_task() -> None:
 
                 def wander_body(loc: str, mn=mname, dn=dname) -> str:
                     ctx = LocaleContext(loc)
+                    if dn == "right":
+                        dloc = ctx.pgettext("compass", "right")
+                    elif dn == "left":
+                        dloc = ctx.pgettext("compass", "left")
+                    elif dn == "up":
+                        dloc = ctx.pgettext("compass", "up")
+                    elif dn == "down":
+                        dloc = ctx.pgettext("compass", "down")
+                    else:
+                        dloc = dn
                     return ctx.gettext("%(monster)s moved one cell %(direction)s.") % {
                         "monster": mn,
-                        "direction": ctx.pgettext("compass", dn),
+                        "direction": dloc,
                     }
 
                 await deliver([(None, wander_body, None)])

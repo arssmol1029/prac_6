@@ -1,5 +1,6 @@
 **/build/
 **/doc/build/
+**/mood/server/locales/mood.pot
 **/doc/_build/
 **/*.egg-info/
 __pycache__/
