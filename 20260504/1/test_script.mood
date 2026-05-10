@@ -1,0 +1,11 @@
+# Тестовый файл команд для MOOD
+
+addmon dragon coords 1 0 hello "I am a dragon!" hp 100
+
+right
+
+attack dragon with sword
+
+sayall "Hello from script!"
+
+quit

@@ -1,0 +1,157 @@
+# Russian translations for mood server messages.
+msgid ""
+msgstr ""
+"Project-Id-Version: mood 0.1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-05-10 19:33+0300\n"
+"PO-Revision-Date: 2026-05-10 12:00+0000\n"
+"Last-Translator: \n"
+"Language: ru\n"
+"Language-Team: Russian\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/_i18n_literals_for_babel.py:10
+#, python-format
+msgid "%(n)d hit point"
+msgid_plural "%(n)d hit points"
+msgstr[0] "%(n)d очко"
+msgstr[1] "%(n)d очка"
+msgstr[2] "%(n)d очков"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/_i18n_literals_for_babel.py:11
+msgctxt "weapon"
+msgid "sword"
+msgstr "мечом"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/_i18n_literals_for_babel.py:12
+msgctxt "weapon"
+msgid "axe"
+msgstr "топором"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/_i18n_literals_for_babel.py:13
+msgctxt "weapon"
+msgid "spear"
+msgstr "копьём"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/_i18n_literals_for_babel.py:14
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:338
+msgctxt "compass"
+msgid "right"
+msgstr "вправо"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/_i18n_literals_for_babel.py:15
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:340
+msgctxt "compass"
+msgid "left"
+msgstr "влево"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/_i18n_literals_for_babel.py:16
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:342
+msgctxt "compass"
+msgid "up"
+msgstr "вверх"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/_i18n_literals_for_babel.py:17
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:344
+msgctxt "compass"
+msgid "down"
+msgstr "вниз"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:70
+#, python-format
+msgid "%(user)s left the MOOD."
+msgstr "%(user)s покинул MOOD."
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:120
+#, python-format
+msgid "%(user)s: %(text)s"
+msgstr "%(user)s: %(text)s"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:132
+msgid "Moving monsters: on"
+msgstr "Бродячие монстры: вкл"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:135
+msgid "Moving monsters: off"
+msgstr "Бродячие монстры: выкл"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:146
+#, python-format
+msgid "Set up locale: %(name)s"
+msgstr "Установлена локаль: %(name)s"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:156
+#, python-format
+msgid "Unknown command: %(cmd)s"
+msgstr "Неизвестная команда: %(cmd)s"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:167
+msgid "Invalid command or parameters."
+msgstr "Неверная команда или параметры."
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:230
+#, python-format
+msgid "%(user)s joined the MOOD."
+msgstr "%(user)s присоединился к MOOD."
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:237
+#, python-format
+msgid "Welcome %(user)s, you are connected to MOOD."
+msgstr "Добро пожаловать, %(user)s, вы подключены к MOOD."
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:293
+#, python-format
+msgid "%(user)s disconnected from the MOOD."
+msgstr "%(user)s отключился от MOOD."
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/session.py:347
+#, python-format
+msgid "%(monster)s moved one cell %(direction)s."
+msgstr "%(monster)s переместился на одну клетку %(direction)s."
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/world.py:260
+#, python-format
+msgid "Moved to (%(x)d, %(y)d)"
+msgstr "Переход в клетку (%(x)d, %(y)d)"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/world.py:298
+#, python-format
+msgid "No %(monster)s here"
+msgstr "Здесь нет %(monster)s"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/world.py:316
+#, python-format
+msgid ""
+"%(attacker)s attacked %(monster)s with %(weapon)s for %(dealt_hp)s and "
+"killed the monster!"
+msgstr ""
+"%(attacker)s атаковал %(monster)s с %(weapon)s, снято %(dealt_hp)s, "
+"монстр убит!"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/world.py:326
+#, python-format
+msgid ""
+"%(attacker)s attacked %(monster)s with %(weapon)s for %(dealt_hp)s; "
+"%(monster)s has %(remaining_hp)s left."
+msgstr ""
+"%(attacker)s атаковал %(monster)s с %(weapon)s, снято %(dealt_hp)s; у "
+"%(monster)s осталось %(remaining_hp)s."
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/world.py:356
+msgid " (replaced existing monster)"
+msgstr " (заменён существующий монстр)"
+
+#: /Users/kepolb/Personal/prac_6/20260427/1/mood/server/world.py:360
+#, python-format
+msgid ""
+"%(user)s placed monster %(monster)s with %(hp)s at (%(x)d, "
+"%(y)d)%(suffix)s."
+msgstr ""
+"%(user)s разместил монстра %(monster)s с %(hp)s в клетке (%(x)d, "
+"%(y)d)%(suffix)s."
+
