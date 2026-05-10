@@ -21,6 +21,7 @@ PO_PATH = LOCALES_DIR / LOCALE / "LC_MESSAGES" / f"{DOMAIN}.po"
 MO_PATH = LOCALES_DIR / LOCALE / "LC_MESSAGES" / f"{DOMAIN}.mo"
 DOC_SOURCE = ROOT / "doc" / "source"
 DOC_BUILD = ROOT / "doc" / "build"
+DOC_HTML_PACKAGE = ROOT / "mood" / "doc_html"
 BABEL_CFG = ROOT / "babel.cfg"
 
 
@@ -101,6 +102,7 @@ def _build_i18n_compile() -> None:
 
 
 def _build_html() -> None:
+    """Sphinx HTML в ``mood/doc_html`` (входит в wheel/sdist как package-data)."""
     _run(
         [
             sys.executable,
@@ -109,7 +111,7 @@ def _build_html() -> None:
             "-M",
             "html",
             str(DOC_SOURCE),
-            str(DOC_BUILD),
+            str(DOC_HTML_PACKAGE),
         ]
     )
 
@@ -160,7 +162,7 @@ GOALS: dict[str, Goal] = {
     ),
     "html": Goal(
         name="html",
-        clean=(DOC_BUILD,),
+        clean=(DOC_BUILD, DOC_HTML_PACKAGE),
         build=_build_html,
     ),
     "test": Goal(

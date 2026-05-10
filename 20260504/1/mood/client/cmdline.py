@@ -1,10 +1,12 @@
 import json
 import readline
 import shlex
+import webbrowser
 import cmd
 import socket
 import sys
 import threading
+from importlib.resources import as_file, files
 
 from mood.common.addmon import parse_addmon
 from mood.common.constants import (
@@ -244,6 +246,15 @@ class MUDClient(cmd.Cmd):
             print("Invalid arguments")
             return
         self._send_line(f"locale {name}")
+
+    def do_documentation(self, arg: str) -> None:
+        """Открыть в браузере HTML-документацию пакета (``mood/doc_html``)."""
+        index = files("mood") / "doc_html" / "html" / "index.html"
+        if not index.is_file():
+            print("Documentation not found (expected packaged doc_html).")
+            return
+        with as_file(index) as path:
+            webbrowser.open(path.as_uri())
 
     def do_attack(self, arg: str) -> None:
         try:

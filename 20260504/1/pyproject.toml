@@ -5,14 +5,37 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mood"
 version = "0.1.0"
+description = """MOOD — общий пакет с клиентом (mood.client) и сервером (mood.server).
+
+Состав установленного пакета: модули *.py; скомпилированные переводы
+(mood/server/locales/**/LC_MESSAGES/mood.mo); mood/data/extra_monster.txt;
+предсобранная Sphinx-документация в mood/doc_html/; пример mood/data/test_script.mood.
+Пересборка HTML: python goals.py html (артефакт: mood/doc_html/html/)."""
+requires-python = ">=3.10"
 dependencies = [
-    "cowsay",
-    "babel",
+    "python-cowsay>=1.2.0",
+    "babel>=2.12.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "sphinx>=6.0",
+    "sphinx-rtd-theme>=2.0",
+]
+
+[project.scripts]
+mood-client = "mood.client.__main__:main"
+mood-server = "mood.server.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["mood*"]
 
 [tool.setuptools.package-data]
-"mood.server" = ["locales/**/*.mo", "locales/**/*.po"]
+mood = [
+    "server/locales/**/*.mo",
+    "server/locales/**/*.po",
+    "data/*.txt",
+    "data/*.mood",
+    "doc_html/**",
+]

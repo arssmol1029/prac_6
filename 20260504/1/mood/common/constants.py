@@ -2,7 +2,10 @@ from cowsay import list_cows
 
 VERSION = 0.1
 
-MONSTERS_LIST = list_cows()
+_base = list(list_cows())
+if "mood_extra" not in _base:
+    _base.append("mood_extra")
+MONSTERS_LIST = tuple(_base)
 
 WEAPONS: dict[str, int] = {
     "sword": 10,

@@ -4,7 +4,7 @@ import json
 import random
 import sys
 
-from cowsay import cowsay
+from mood.common.cowsay_render import render_monster_art
 from mood.common.framing import frame_text
 from mood.common.models import MonsterParams
 from mood.common.routing import MessageBody, RouterBatch
@@ -353,7 +353,7 @@ async def monster_wandering_task() -> None:
                 
                 players_at_pos = world.get_players_at(new_pos)
                 for player_name in players_at_pos:
-                    art = cowsay(message=monster.hello, cow=monster.name)
+                    art = render_monster_art(monster.name, monster.hello)
                     await deliver([(player_name, art, None)])
         
         await asyncio.sleep(30)

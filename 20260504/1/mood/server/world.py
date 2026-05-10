@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
-from cowsay import cowsay
-
+from mood.common.cowsay_render import render_monster_art
 from mood.common.models import MonsterParams
 from mood.common.routing import RouterBatch
 from mood.server.l10n import LocaleContext
@@ -265,7 +264,7 @@ class MultiMUDWorld:
         ]
         ev = self[x, y]
         if isinstance(ev, Monster):
-            art = cowsay(message=ev.hello, cow=ev.name)
+            art = render_monster_art(ev.name, ev.hello)
             out.append((username, art, None))
         return out
 

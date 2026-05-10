@@ -1,4 +1,4 @@
-# Тестовый файл команд для MOOD
+# Тестовый файл команд для MOOD (пример для mood-client … --file)
 
 addmon dragon coords 1 0 hello "I am a dragon!" hp 100
 

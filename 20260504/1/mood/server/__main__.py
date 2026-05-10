@@ -3,7 +3,8 @@ import sys
 from mood.server.session import run_mood_server
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Точка входа для консольного скрипта ``mood-server``."""
     h = "0.0.0.0"
     p = 1337
     if len(sys.argv) >= 2:
@@ -11,3 +12,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         p = int(sys.argv[2])
     run_mood_server(h, p)
+
+
+if __name__ == "__main__":
+    main()
