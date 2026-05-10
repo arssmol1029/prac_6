@@ -231,6 +231,13 @@ class MUDClient(cmd.Cmd):
 
         return []
 
+    def do_movemonsters(self, arg: str) -> None:
+        s = arg.strip().lower()
+        if s not in ("on", "off"):
+            print("Invalid arguments")
+            return
+        self._send_line(f"movemonsters {s}")
+
     def do_attack(self, arg: str) -> None:
         try:
             args = shlex.split(arg)

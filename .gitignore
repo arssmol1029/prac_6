@@ -1,5 +1,7 @@
-doc/build/
-doc/_build/
+**/build/
+**/doc/build/
+**/doc/_build/
+**/*.egg-info/
 __pycache__/
 *.pyc
 *.pyo

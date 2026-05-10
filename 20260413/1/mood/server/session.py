@@ -93,6 +93,12 @@ def handle_command(username: str, line: str) -> tuple[bool, RouterBatch]:
             if not isinstance(text, str):
                 raise ValueError
             return False, [(None, f"{username}: {text}", username)]
+        if cmd == "movemonsters":
+            if len(parts) != 2 or parts[1] not in ("on", "off"):
+                raise ValueError
+            world.moving_monsters = parts[1] == "on"
+            state = "on" if world.moving_monsters else "off"
+            return False, [(username, f"Moving monsters: {state}", None)]
         return False, [(username, f"Unknown command: {cmd}", None)]
     except (ValueError, json.JSONDecodeError, KeyError, TypeError):
         return False, [(username, "Invalid command or parameters.", None)]
@@ -208,8 +214,8 @@ async def monster_wandering_task() -> None:
     await asyncio.sleep(30)
     
     while True:
-        monsters = world.get_all_monsters()
-        
+        monsters = world.get_all_monsters() if world.moving_monsters else []
+
         if not monsters:
             await asyncio.sleep(30)
             continue

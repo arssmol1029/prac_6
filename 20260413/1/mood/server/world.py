@@ -196,6 +196,7 @@ class MultiMUDWorld:
         self._size = size
         self._players: dict[str, Player] = {}
         self._dungeon: list[list[Event]] = []
+        self.moving_monsters = True
         self._reset_grid()
 
     def _reset_grid(self) -> None:
