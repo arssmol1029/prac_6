@@ -370,3 +370,14 @@ async def main(host: str, port: int) -> None:
                 await wandering_task
             except asyncio.CancelledError:
                 pass
+
+
+def run_mood_server(host: str, port: int) -> None:
+    """
+    Запустить MOOD-сервер до остановки
+
+    Args:
+        host: Хост для прослушивания
+        port: Порт для прослушивания
+    """
+    asyncio.run(main(host, port))

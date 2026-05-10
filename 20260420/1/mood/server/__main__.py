@@ -1,7 +1,6 @@
-import asyncio
 import sys
 
-from mood.server.session import main
+from mood.server.session import run_mood_server
 
 
 if __name__ == "__main__":
@@ -11,4 +10,4 @@ if __name__ == "__main__":
         h = sys.argv[1]
     if len(sys.argv) >= 3:
         p = int(sys.argv[2])
-    asyncio.run(main(h, p))
+    run_mood_server(h, p)

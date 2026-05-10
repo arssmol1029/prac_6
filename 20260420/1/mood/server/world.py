@@ -72,7 +72,7 @@ class Creature:
             Реальный нанесенный урон
         """
         start_hp = self._hp
-        if damage > self._hp:
+        if damage >= self._hp:
             self._hp = 0
             self.die()
         else:
